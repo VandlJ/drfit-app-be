@@ -91,7 +91,10 @@ export async function buildServer() {
         const json = buf.length ? JSON.parse(buf.toString('utf8')) : {};
         done(null, json);
       } catch (err) {
-        done(err as Error, undefined);
+        const e = err as Error & { statusCode?: number; code?: string };
+        e.statusCode = 400;
+        e.code = 'INVALID_JSON';
+        done(e, undefined);
       }
     },
   );
