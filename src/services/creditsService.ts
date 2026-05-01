@@ -36,7 +36,7 @@ export async function createTopupIntent(userId: string, packageId: string) {
   }
   const stripe = ensureStripe();
   const intent = await stripe.paymentIntents.create({
-    amount: pkg.priceKc * 100, // haléře
+    amount: pkg.priceKc * 100, // hellers (CZK cents)
     currency: 'czk',
     automatic_payment_methods: { enabled: true },
     metadata: {
@@ -82,7 +82,7 @@ export async function applyPaymentSuccess(intent: Stripe.PaymentIntent) {
         amount: pkg.credits,
         type: 'TOPUP',
         referenceId: intent.id,
-        description: `Top-up balíček ${pkg.id} (${pkg.credits} kreditů)`,
+        description: `Top-up package ${pkg.id} (${pkg.credits} credits)`,
       },
     });
 
@@ -97,7 +97,7 @@ export async function applyPaymentSuccess(intent: Stripe.PaymentIntent) {
           amount: pkg.bonusCredits,
           type: 'BONUS',
           referenceId: intent.id,
-          description: `Bonusové kredity k balíčku ${pkg.id}`,
+          description: `Bonus credits for package ${pkg.id}`,
         },
       });
     }

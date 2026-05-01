@@ -57,7 +57,7 @@ export async function createReservation(userId: string, slotId: string) {
         amount: -slot.priceCredits,
         type: 'SPEND',
         referenceId: reservation.id,
-        description: `Rezervace slotu ${slot.startTime}-${slot.endTime}`,
+        description: `Session booking ${slot.startTime}-${slot.endTime}`,
       },
     });
 
@@ -135,7 +135,7 @@ export async function cancelReservation(userId: string, reservationId: string) {
             amount: refund,
             type: 'REFUND',
             referenceId: reservation.id,
-            description: `Vrácení kreditů (${refundPercent}%) za zrušenou rezervaci`,
+            description: `Refund (${refundPercent}%) for cancelled reservation`,
           },
         });
       }

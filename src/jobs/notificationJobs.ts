@@ -53,8 +53,8 @@ async function run60MinReminder(now: number, reservations: ActiveReservation[]) 
       if (!claimed) continue;
       await sendPushNotification(
         tokensFor(r),
-        'Připomenutí',
-        'Nezapomeň – máš fitko za hodinu 💪',
+        'Reminder',
+        'Don\'t forget – your session starts in an hour 💪',
         { reservationId: r.id, type: 'REMINDER_60' },
       );
     }
@@ -71,8 +71,8 @@ async function runPinNotification(now: number, reservations: ActiveReservation[]
       if (!claimed) continue;
       await sendPushNotification(
         tokensFor(r),
-        'PIN je tady 🔑',
-        `Tvůj PIN: ${r.pin} – Hodně zdaru!`,
+        'Your PIN is ready 🔑',
+        `Your PIN: ${r.pin} – Have a great workout!`,
         { reservationId: r.id, pin: r.pin, type: 'PIN_5' },
       );
     }
@@ -89,8 +89,8 @@ async function runEndWarning(now: number, reservations: ActiveReservation[]) {
       if (!claimed) continue;
       await sendPushNotification(
         tokensFor(r),
-        'Konec slotu se blíží',
-        'Za 10 minut ti končí slot, čas se jít převléct 👕',
+        'Session ending soon',
+        'Your session ends in 10 minutes – time to wrap up 👕',
         { reservationId: r.id, type: 'END_WARNING_10' },
       );
     }

@@ -704,7 +704,7 @@ export async function adminRoutes(app: FastifyInstance) {
             amount: refund,
             type: 'REFUND',
             referenceId: r.id,
-            description: 'Vrácení kreditů – administrátorské zrušení rezervace',
+            description: 'Refund – administrative cancellation',
           },
         });
       }
