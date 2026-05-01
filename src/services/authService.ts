@@ -5,6 +5,7 @@ import {
   refreshTokenExpiryDate,
   signAccessToken,
 } from '../lib/jwt';
+import { publicUserShape } from './userService';
 
 export class AuthError extends Error {
   constructor(public status: number, public code: string, message: string) {
@@ -26,7 +27,7 @@ export async function registerUser(email: string, password: string, name: string
       creditAccount: { create: { balance: 0 } },
     },
   });
-  return issueTokens(user.id, user.email, user.name, user.role);
+  return issueTokens(user);
 }
 
 export async function loginUser(email: string, password: string) {
@@ -38,23 +39,32 @@ export async function loginUser(email: string, password: string) {
   if (!ok) {
     throw new AuthError(401, 'INVALID_CREDENTIALS', 'Invalid email or password');
   }
-  return issueTokens(user.id, user.email, user.name, user.role);
+  return issueTokens(user);
 }
 
-async function issueTokens(userId: string, email: string, name: string, role: string) {
-  const accessToken = signAccessToken({ sub: userId, email, role });
+async function issueTokens(user: {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  defaultCenterId: string | null;
+  dateOfBirth: Date | null;
+  avatarUrl: string | null;
+  createdAt: Date;
+}) {
+  const accessToken = signAccessToken({ sub: user.id, email: user.email, role: user.role });
   const refreshToken = generateRefreshToken();
   await prisma.refreshToken.create({
     data: {
       token: refreshToken,
-      userId,
+      userId: user.id,
       expiresAt: refreshTokenExpiryDate(),
     },
   });
   return {
     accessToken,
     refreshToken,
-    user: { id: userId, email, name, role },
+    user: publicUserShape(user),
   };
 }
 

@@ -1,12 +1,14 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import sensible from '@fastify/sensible';
+import multipart from '@fastify/multipart';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { ZodError } from 'zod';
 import { config } from './lib/config';
 import { prisma } from './lib/prisma';
 import { authRoutes } from './routes/auth';
+import { userRoutes } from './routes/users';
 import { slotRoutes } from './routes/slots';
 import { reservationRoutes } from './routes/reservations';
 import { creditsRoutes, creditsWebhookRoute } from './routes/credits';
@@ -36,6 +38,12 @@ export async function buildServer() {
     ],
   });
   await app.register(sensible);
+  await app.register(multipart, {
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5 MB
+      files: 1,
+    },
+  });
 
   await app.register(swagger, {
     openapi: {
@@ -54,6 +62,7 @@ export async function buildServer() {
       },
       tags: [
         { name: 'auth' },
+        { name: 'users' },
         { name: 'slots' },
         { name: 'reservations' },
         { name: 'credits' },
@@ -109,6 +118,7 @@ export async function buildServer() {
   app.get('/health', async () => ({ status: 'ok' }));
 
   await app.register(authRoutes);
+  await app.register(userRoutes);
   await app.register(slotRoutes);
   await app.register(reservationRoutes);
   await app.register(creditsRoutes);

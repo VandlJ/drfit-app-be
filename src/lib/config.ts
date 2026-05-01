@@ -19,6 +19,8 @@ export const config = {
   adminSecret: required('ADMIN_SECRET', 'change-me'),
   cancellationPolicyHours: Number(process.env.CANCELLATION_POLICY_HOURS ?? 2),
   cancellationRefundPercent: Number(process.env.CANCELLATION_REFUND_PERCENT ?? 100),
+  publicBaseUrl: (process.env.PUBLIC_BASE_URL ?? `http://localhost:${process.env.PORT ?? 3000}`).replace(/\/$/, ''),
+  uploadsDir: process.env.UPLOADS_DIR ?? '/app/uploads',
 };
 
 export const PACKAGES = [
