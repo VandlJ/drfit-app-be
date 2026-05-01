@@ -1,0 +1,139 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String   @default("client") // "client" | "admin"
+  createdAt    DateTime @default(now())
+
+  creditAccount CreditAccount?
+  reservations  Reservation[]
+  pushTokens    PushToken[]
+  refreshTokens RefreshToken[]
+  feedback      Feedback[]
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model CreditAccount {
+  id      String @id @default(cuid())
+  userId  String @unique
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance Int    @default(0)
+
+  transactions CreditTransaction[]
+}
+
+model CreditTransaction {
+  id              String          @id @default(cuid())
+  creditAccountId String
+  creditAccount   CreditAccount   @relation(fields: [creditAccountId], references: [id], onDelete: Cascade)
+  amount          Int
+  type            TransactionType
+  referenceId     String?
+  description     String
+  createdAt       DateTime        @default(now())
+
+  @@index([creditAccountId])
+}
+
+enum TransactionType {
+  TOPUP
+  BONUS
+  SPEND
+  REFUND
+}
+
+model Slot {
+  id           String   @id @default(cuid())
+  date         DateTime @db.Date
+  startTime    String
+  endTime      String
+  priceCredits Int
+  isAvailable  Boolean  @default(true)
+
+  reservation Reservation?
+
+  @@index([date])
+}
+
+model Reservation {
+  id           String            @id @default(cuid())
+  userId       String
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slotId       String            @unique
+  slot         Slot              @relation(fields: [slotId], references: [id])
+  status       ReservationStatus @default(ACTIVE)
+  pin          String
+  creditsSpent Int
+  createdAt    DateTime          @default(now())
+  cancelledAt  DateTime?
+
+  sentNotifications SentNotification[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+enum ReservationStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model SentNotification {
+  id            String           @id @default(cuid())
+  reservationId String
+  reservation   Reservation      @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  type          NotificationType
+  sentAt        DateTime         @default(now())
+
+  @@unique([reservationId, type])
+}
+
+enum NotificationType {
+  REMINDER_60
+  PIN_5
+  END_WARNING_10
+}
+
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  platform  String   @default("ios")
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Feedback {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reservationId String?
+  rating        Int
+  comment       String?
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+}
