@@ -103,11 +103,21 @@ export async function userRoutes(app: FastifyInstance) {
 
   app.post('/me/avatar', {
     preHandler: authenticate,
+    // Skip body validation: multipart bodies don't populate req.body in a way
+    // the JSON-schema validator can handle. We read the file via req.file().
+    validatorCompiler: () => () => true,
     schema: {
       tags: ['users'],
       summary: 'Upload avatar (multipart/form-data, field "file", max 5MB)',
       security: [{ bearerAuth: [] }],
       consumes: ['multipart/form-data'],
+      body: {
+        type: 'object',
+        required: ['file'],
+        properties: {
+          file: { type: 'string', format: 'binary' },
+        },
+      },
     },
   }, async (req, reply) => {
     const data = await req.file({ limits: { fileSize: MAX_AVATAR_BYTES, files: 1 } });
