@@ -12,6 +12,7 @@ import { reservationRoutes } from './routes/reservations';
 import { creditsRoutes, creditsWebhookRoute } from './routes/credits';
 import { notificationRoutes } from './routes/notifications';
 import { feedbackRoutes } from './routes/feedback';
+import { centerRoutes } from './routes/centers';
 import { adminRoutes } from './routes/admin';
 import { startNotificationJobs } from './jobs/notificationJobs';
 
@@ -58,6 +59,8 @@ export async function buildServer() {
         { name: 'credits' },
         { name: 'notifications' },
         { name: 'feedback' },
+        { name: 'centers' },
+        { name: 'admin' },
       ],
     },
   });
@@ -112,6 +115,7 @@ export async function buildServer() {
   await app.register(creditsWebhookRoute);
   await app.register(notificationRoutes);
   await app.register(feedbackRoutes);
+  await app.register(centerRoutes);
   await app.register(adminRoutes, { prefix: '/admin' });
 
   app.addHook('onClose', async () => {

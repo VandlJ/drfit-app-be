@@ -8,12 +8,14 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  name         String
-  role         String   @default("client") // "client" | "admin"
-  createdAt    DateTime @default(now())
+  id              String   @id @default(cuid())
+  email           String   @unique
+  passwordHash    String
+  name            String
+  role            String   @default("client") // "client" | "admin"
+  defaultCenterId String?
+  defaultCenter   FitnessCenter? @relation(fields: [defaultCenterId], references: [id])
+  createdAt       DateTime @default(now())
 
   creditAccount CreditAccount?
   reservations  Reservation[]
@@ -69,10 +71,26 @@ model Slot {
   endTime      String
   priceCredits Int
   isAvailable  Boolean  @default(true)
+  centerId     String
+  center       FitnessCenter @relation(fields: [centerId], references: [id])
 
   reservation Reservation?
 
   @@index([date])
+  @@index([centerId])
+}
+
+model FitnessCenter {
+  id          String   @id @default(cuid())
+  name        String
+  address     String
+  description String?
+  imageUrl    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  slots          Slot[]
+  defaultedUsers User[]
 }
 
 model Reservation {

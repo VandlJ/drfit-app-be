@@ -134,9 +134,41 @@ export async function authRoutes(app: FastifyInstance) {
   }, async (req, reply) => {
     const user = await prisma.user.findUnique({
       where: { id: req.userId! },
-      select: { id: true, email: true, name: true, role: true, createdAt: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        createdAt: true,
+        defaultCenter: { select: { id: true, name: true } },
+      },
     });
     if (!user) return reply.code(404).send({ error: 'User not found', code: 'NOT_FOUND' });
     return reply.send(user);
+  });
+
+  app.patch('/auth/me', {
+    preHandler: authenticate,
+    schema: {
+      tags: ['auth'],
+      summary: 'Update current user (default center)',
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['defaultCenterId'],
+        properties: { defaultCenterId: { type: 'string' } },
+      },
+    },
+  }, async (req, reply) => {
+    const { defaultCenterId } = z.object({ defaultCenterId: z.string().min(1) }).parse(req.body);
+    const center = await prisma.fitnessCenter.findUnique({ where: { id: defaultCenterId } });
+    if (!center || !center.isActive) {
+      return reply.code(404).send({ error: 'Center not found or inactive', code: 'NOT_FOUND' });
+    }
+    await prisma.user.update({
+      where: { id: req.userId! },
+      data: { defaultCenterId },
+    });
+    return reply.send({ defaultCenter: { id: center.id, name: center.name } });
   });
 }

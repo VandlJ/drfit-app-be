@@ -41,14 +41,30 @@ export async function adminRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAdmin);
 
   // ── Dashboard ────────────────────────────────────────────────────────────
+  const dashboardQuery = z.object({ centerId: z.string().optional() });
+
   app.get('/dashboard/stats', {
-    schema: { tags: ['admin'], summary: 'Dashboard stats', security: [{ bearerAuth: [] }] },
-  }, async () => {
+    schema: {
+      tags: ['admin'],
+      summary: 'Dashboard stats (optionally scoped by center)',
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: { centerId: { type: 'string' } },
+      },
+    },
+  }, async (req) => {
+    const { centerId } = dashboardQuery.parse(req.query);
     const now = new Date();
     const todayStart = startOfDay(now);
     const todayEnd = endOfDay(now);
     const monthStart = startOfMonth(now);
     const todayDateUTC = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+
+    const reservationCenterFilter: Prisma.ReservationWhereInput = centerId
+      ? { slot: { centerId } }
+      : {};
+    const slotCenterFilter: Prisma.SlotWhereInput = centerId ? { centerId } : {};
 
     const [
       totalUsers,
@@ -61,27 +77,30 @@ export async function adminRoutes(app: FastifyInstance) {
     ] = await Promise.all([
       prisma.user.count(),
       prisma.reservation.count({
-        where: { createdAt: { gte: todayStart, lte: todayEnd } },
+        where: { ...reservationCenterFilter, createdAt: { gte: todayStart, lte: todayEnd } },
       }),
       prisma.reservation.count({
-        where: { createdAt: { gte: monthStart } },
+        where: { ...reservationCenterFilter, createdAt: { gte: monthStart } },
       }),
+      // Revenue is global (top-ups aren't tied to a center).
       prisma.creditTransaction.aggregate({
         where: { type: 'TOPUP', createdAt: { gte: monthStart } },
         _sum: { amount: true },
       }),
       prisma.creditAccount.aggregate({ _sum: { balance: true } }),
-      prisma.slot.count({ where: { date: todayDateUTC } }),
+      prisma.slot.count({ where: { ...slotCenterFilter, date: todayDateUTC } }),
       prisma.slot.count({
         where: {
+          ...slotCenterFilter,
           date: todayDateUTC,
           reservation: { status: 'ACTIVE' },
         },
       }),
     ]);
 
-    const revenueThisMonth = topupAgg._sum.amount ?? 0; // already in credits == Kč 1:1 in our model
+    const revenueThisMonth = topupAgg._sum.amount ?? 0;
     return {
+      centerId: centerId ?? null,
       totalUsers,
       totalReservationsToday,
       totalReservationsThisMonth,
@@ -281,6 +300,8 @@ export async function adminRoutes(app: FastifyInstance) {
   });
 
   // ── Slots ────────────────────────────────────────────────────────────────
+  const slotsListQuery = dateRangeQuery.extend({ centerId: z.string().optional() });
+
   app.get('/slots', {
     schema: {
       tags: ['admin'],
@@ -291,21 +312,24 @@ export async function adminRoutes(app: FastifyInstance) {
         properties: {
           from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
           to: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+          centerId: { type: 'string' },
         },
       },
     },
   }, async (req) => {
-    const { from, to } = dateRangeQuery.parse(req.query);
+    const { from, to, centerId } = slotsListQuery.parse(req.query);
     const where: Prisma.SlotWhereInput = {};
     if (from || to) {
       where.date = {};
       if (from) (where.date as Prisma.DateTimeFilter).gte = dateOnlyUTC(from);
       if (to) (where.date as Prisma.DateTimeFilter).lte = dateOnlyUTC(to);
     }
+    if (centerId) where.centerId = centerId;
     const slots = await prisma.slot.findMany({
       where,
       orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
       include: {
+        center: { select: { id: true, name: true } },
         reservation: {
           include: { user: { select: { id: true, name: true, email: true } } },
         },
@@ -319,6 +343,7 @@ export async function adminRoutes(app: FastifyInstance) {
         endTime: s.endTime,
         priceCredits: s.priceCredits,
         isAvailable: s.isAvailable,
+        center: s.center,
         reservation: s.reservation
           ? {
               id: s.reservation.id,
@@ -331,6 +356,7 @@ export async function adminRoutes(app: FastifyInstance) {
   });
 
   const slotCreateSchema = z.object({
+    centerId: z.string().min(1),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     startTime: z.string().regex(/^\d{2}:\d{2}$/),
     endTime: z.string().regex(/^\d{2}:\d{2}$/),
@@ -344,8 +370,9 @@ export async function adminRoutes(app: FastifyInstance) {
       security: [{ bearerAuth: [] }],
       body: {
         type: 'object',
-        required: ['date', 'startTime', 'endTime', 'priceCredits'],
+        required: ['centerId', 'date', 'startTime', 'endTime', 'priceCredits'],
         properties: {
+          centerId: { type: 'string' },
           date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
           startTime: { type: 'string', pattern: '^\\d{2}:\\d{2}$' },
           endTime: { type: 'string', pattern: '^\\d{2}:\\d{2}$' },
@@ -357,6 +384,7 @@ export async function adminRoutes(app: FastifyInstance) {
     const body = slotCreateSchema.parse(req.body);
     const slot = await prisma.slot.create({
       data: {
+        centerId: body.centerId,
         date: dateOnlyUTC(body.date),
         startTime: body.startTime,
         endTime: body.endTime,
@@ -367,6 +395,7 @@ export async function adminRoutes(app: FastifyInstance) {
     return reply.code(201).send({
       slot: {
         id: slot.id,
+        centerId: slot.centerId,
         date: slot.date.toISOString().slice(0, 10),
         startTime: slot.startTime,
         endTime: slot.endTime,
@@ -376,6 +405,7 @@ export async function adminRoutes(app: FastifyInstance) {
   });
 
   const bulkSchema = z.object({
+    centerId: z.string().min(1),
     from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     weekdays: z.array(z.number().int().min(0).max(6)).min(1),
@@ -397,8 +427,9 @@ export async function adminRoutes(app: FastifyInstance) {
       security: [{ bearerAuth: [] }],
       body: {
         type: 'object',
-        required: ['from', 'to', 'weekdays', 'times', 'priceCredits'],
+        required: ['centerId', 'from', 'to', 'weekdays', 'times', 'priceCredits'],
         properties: {
+          centerId: { type: 'string' },
           from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
           to: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
           weekdays: { type: 'array', items: { type: 'integer', minimum: 0, maximum: 6 } },
@@ -434,13 +465,14 @@ export async function adminRoutes(app: FastifyInstance) {
         const date = new Date(cursor);
         for (const t of body.times) {
           const exists = await prisma.slot.findFirst({
-            where: { date, startTime: t.startTime },
+            where: { date, startTime: t.startTime, centerId: body.centerId },
           });
           if (exists) {
             skipped++;
           } else {
             await prisma.slot.create({
               data: {
+                centerId: body.centerId,
                 date,
                 startTime: t.startTime,
                 endTime: t.endTime,
@@ -535,6 +567,7 @@ export async function adminRoutes(app: FastifyInstance) {
     from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     userId: z.string().optional(),
+    centerId: z.string().optional(),
   });
 
   app.get('/reservations', {
@@ -549,26 +582,31 @@ export async function adminRoutes(app: FastifyInstance) {
           from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
           to: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
           userId: { type: 'string' },
+          centerId: { type: 'string' },
           limit: { type: 'integer', default: 20, minimum: 1, maximum: 200 },
           offset: { type: 'integer', default: 0, minimum: 0 },
         },
       },
     },
   }, async (req) => {
-    const { status, from, to, userId, limit, offset } = reservationsListQuery.parse(req.query);
+    const { status, from, to, userId, centerId, limit, offset } = reservationsListQuery.parse(req.query);
     const where: Prisma.ReservationWhereInput = {};
     if (status) where.status = status as ReservationStatus;
     if (userId) where.userId = userId;
-    if (from || to) {
-      where.slot = { date: {} };
-      if (from) (where.slot.date as Prisma.DateTimeFilter).gte = dateOnlyUTC(from);
-      if (to) (where.slot.date as Prisma.DateTimeFilter).lte = dateOnlyUTC(to);
+    if (from || to || centerId) {
+      where.slot = {};
+      if (centerId) where.slot.centerId = centerId;
+      if (from || to) {
+        where.slot.date = {};
+        if (from) (where.slot.date as Prisma.DateTimeFilter).gte = dateOnlyUTC(from);
+        if (to) (where.slot.date as Prisma.DateTimeFilter).lte = dateOnlyUTC(to);
+      }
     }
     const [reservations, total] = await Promise.all([
       prisma.reservation.findMany({
         where,
         include: {
-          slot: true,
+          slot: { include: { center: { select: { id: true, name: true } } } },
           user: { select: { id: true, name: true, email: true } },
         },
         orderBy: { createdAt: 'desc' },
@@ -591,6 +629,7 @@ export async function adminRoutes(app: FastifyInstance) {
           startTime: r.slot.startTime,
           endTime: r.slot.endTime,
           priceCredits: r.slot.priceCredits,
+          center: r.slot.center,
         },
       })),
       total,
@@ -609,7 +648,7 @@ export async function adminRoutes(app: FastifyInstance) {
     const r = await prisma.reservation.findUnique({
       where: { id },
       include: {
-        slot: true,
+        slot: { include: { center: { select: { id: true, name: true } } } },
         user: { select: { id: true, name: true, email: true } },
       },
     });
@@ -628,6 +667,7 @@ export async function adminRoutes(app: FastifyInstance) {
         startTime: r.slot.startTime,
         endTime: r.slot.endTime,
         priceCredits: r.slot.priceCredits,
+        center: r.slot.center,
       },
     };
   });
@@ -882,5 +922,146 @@ export async function adminRoutes(app: FastifyInstance) {
     const tokenList = tokens.map((t) => t.token);
     await sendPushNotification(tokenList, body.title, body.body, { broadcast: true });
     return { sent: tokenList.length };
+  });
+
+  // ── Centers ──────────────────────────────────────────────────────────────
+  app.get('/centers', {
+    schema: {
+      tags: ['admin'],
+      summary: 'List all centers (incl. inactive) with stats',
+      security: [{ bearerAuth: [] }],
+    },
+  }, async () => {
+    const centers = await prisma.fitnessCenter.findMany({
+      orderBy: { createdAt: 'asc' },
+      include: {
+        _count: { select: { slots: true } },
+      },
+    });
+    const ids = centers.map((c) => c.id);
+    const activeReservations = await prisma.reservation.groupBy({
+      by: ['slotId'],
+      where: { status: 'ACTIVE', slot: { centerId: { in: ids } } },
+      _count: { _all: true },
+    });
+    // We need active reservations per center; group via slot lookup.
+    const slots = await prisma.slot.findMany({
+      where: { id: { in: activeReservations.map((a) => a.slotId) } },
+      select: { id: true, centerId: true },
+    });
+    const slotToCenter = new Map(slots.map((s) => [s.id, s.centerId]));
+    const activeByCenter = new Map<string, number>();
+    for (const a of activeReservations) {
+      const c = slotToCenter.get(a.slotId);
+      if (c) activeByCenter.set(c, (activeByCenter.get(c) ?? 0) + a._count._all);
+    }
+    return {
+      centers: centers.map((c) => ({
+        id: c.id,
+        name: c.name,
+        address: c.address,
+        description: c.description,
+        imageUrl: c.imageUrl,
+        isActive: c.isActive,
+        stats: {
+          totalSlots: c._count.slots,
+          activeReservations: activeByCenter.get(c.id) ?? 0,
+        },
+      })),
+    };
+  });
+
+  const centerCreateSchema = z.object({
+    name: z.string().min(1).max(200),
+    address: z.string().min(1).max(500),
+    description: z.string().max(2000).optional(),
+    imageUrl: z.string().url().max(1000).optional(),
+  });
+
+  app.post('/centers', {
+    schema: {
+      tags: ['admin'],
+      summary: 'Create center',
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['name', 'address'],
+        properties: {
+          name: { type: 'string', minLength: 1, maxLength: 200 },
+          address: { type: 'string', minLength: 1, maxLength: 500 },
+          description: { type: 'string', maxLength: 2000 },
+          imageUrl: { type: 'string', format: 'uri', maxLength: 1000 },
+        },
+      },
+    },
+  }, async (req, reply) => {
+    const body = centerCreateSchema.parse(req.body);
+    const center = await prisma.fitnessCenter.create({ data: body });
+    return reply.code(201).send({
+      center: {
+        id: center.id,
+        name: center.name,
+        address: center.address,
+        description: center.description,
+        imageUrl: center.imageUrl,
+        isActive: center.isActive,
+      },
+    });
+  });
+
+  const centerPatchSchema = z.object({
+    name: z.string().min(1).max(200).optional(),
+    address: z.string().min(1).max(500).optional(),
+    description: z.string().max(2000).optional(),
+    imageUrl: z.string().url().max(1000).optional(),
+    isActive: z.boolean().optional(),
+  });
+
+  app.patch('/centers/:id', {
+    schema: {
+      tags: ['admin'],
+      summary: 'Update center',
+      security: [{ bearerAuth: [] }],
+      params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
+      body: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', minLength: 1, maxLength: 200 },
+          address: { type: 'string', minLength: 1, maxLength: 500 },
+          description: { type: 'string', maxLength: 2000 },
+          imageUrl: { type: 'string', format: 'uri', maxLength: 1000 },
+          isActive: { type: 'boolean' },
+        },
+      },
+    },
+  }, async (req, reply) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const body = centerPatchSchema.parse(req.body);
+
+    const existing = await prisma.fitnessCenter.findUnique({ where: { id } });
+    if (!existing) {
+      return reply.code(404).send({ error: 'Center not found', code: 'NOT_FOUND' });
+    }
+    if (body.isActive === false) {
+      const activeCount = await prisma.reservation.count({
+        where: { status: 'ACTIVE', slot: { centerId: id } },
+      });
+      if (activeCount > 0) {
+        return reply
+          .code(409)
+          .send({ error: 'Center has active reservations', code: 'CENTER_HAS_RESERVATIONS' });
+      }
+    }
+    const center = await prisma.fitnessCenter.update({ where: { id }, data: body });
+    return {
+      center: {
+        id: center.id,
+        name: center.name,
+        address: center.address,
+        description: center.description,
+        imageUrl: center.imageUrl,
+        isActive: center.isActive,
+      },
+    };
   });
 }

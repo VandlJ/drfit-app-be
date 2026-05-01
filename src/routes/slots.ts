@@ -5,9 +5,11 @@ import { authenticate, requireAdminSecret } from '../middleware/auth';
 
 const dateQuery = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  centerId: z.string().min(1),
 });
 
 const createSlotSchema = z.object({
+  centerId: z.string().min(1),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   startTime: z.string().regex(/^\d{2}:\d{2}$/),
   endTime: z.string().regex(/^\d{2}:\d{2}$/),
@@ -19,19 +21,22 @@ export async function slotRoutes(app: FastifyInstance) {
     preHandler: authenticate,
     schema: {
       tags: ['slots'],
-      summary: 'List slots for a date',
+      summary: 'List slots for a date and center',
       security: [{ bearerAuth: [] }],
       querystring: {
         type: 'object',
-        required: ['date'],
-        properties: { date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' } },
+        required: ['date', 'centerId'],
+        properties: {
+          date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+          centerId: { type: 'string' },
+        },
       },
     },
   }, async (req, reply) => {
-    const { date } = dateQuery.parse(req.query);
+    const { date, centerId } = dateQuery.parse(req.query);
     const day = new Date(`${date}T00:00:00.000Z`);
     const slots = await prisma.slot.findMany({
-      where: { date: day },
+      where: { date: day, centerId },
       include: { reservation: { select: { status: true } } },
       orderBy: { startTime: 'asc' },
     });
@@ -51,12 +56,13 @@ export async function slotRoutes(app: FastifyInstance) {
     preHandler: requireAdminSecret,
     schema: {
       tags: ['slots'],
-      summary: 'Create a slot (admin)',
+      summary: 'Create a slot (admin via x-admin-secret header)',
       security: [{ adminSecret: [] }],
       body: {
         type: 'object',
-        required: ['date', 'startTime', 'endTime', 'priceCredits'],
+        required: ['centerId', 'date', 'startTime', 'endTime', 'priceCredits'],
         properties: {
+          centerId: { type: 'string' },
           date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
           startTime: { type: 'string', pattern: '^\\d{2}:\\d{2}$' },
           endTime: { type: 'string', pattern: '^\\d{2}:\\d{2}$' },
@@ -68,6 +74,7 @@ export async function slotRoutes(app: FastifyInstance) {
     const body = createSlotSchema.parse(req.body);
     const slot = await prisma.slot.create({
       data: {
+        centerId: body.centerId,
         date: new Date(`${body.date}T00:00:00.000Z`),
         startTime: body.startTime,
         endTime: body.endTime,
