@@ -53,7 +53,7 @@ export async function buildServer() {
         description: 'Private fitness center booking API',
         version: '1.0.0',
       },
-      servers: [{ url: `http://localhost:${config.port}` }],
+      servers: [{ url: config.publicBaseUrl }],
       components: {
         securitySchemes: {
           bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
