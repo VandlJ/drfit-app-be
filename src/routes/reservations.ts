@@ -103,7 +103,7 @@ export async function reservationRoutes(app: FastifyInstance) {
     preHandler: authenticate,
     schema: {
       tags: ['reservations'],
-      summary: 'Get reservation PIN (within 30 min before start)',
+      summary: 'Get reservation PIN (available anytime while reservation is ACTIVE)',
       security: [{ bearerAuth: [] }],
       params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
     },

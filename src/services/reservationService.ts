@@ -153,27 +153,12 @@ export async function cancelReservation(userId: string, reservationId: string) {
 export async function getReservationPin(userId: string, reservationId: string) {
   const reservation = await prisma.reservation.findUnique({
     where: { id: reservationId },
-    include: { slot: true },
   });
   if (!reservation || reservation.userId !== userId) {
     throw new ReservationError(404, 'RESERVATION_NOT_FOUND', 'Reservation not found');
   }
   if (reservation.status !== 'ACTIVE') {
     throw new ReservationError(409, 'RESERVATION_NOT_ACTIVE', 'Reservation is not active');
-  }
-
-  const start = slotDateTime(reservation.slot.date, reservation.slot.startTime);
-  const end = slotDateTime(reservation.slot.date, reservation.slot.endTime);
-  const now = Date.now();
-  const minutesUntilStart = (start.getTime() - now) / (1000 * 60);
-
-  const withinWindow = minutesUntilStart <= 30 && now < end.getTime();
-
-  if (!withinWindow) {
-    if (now >= end.getTime()) {
-      throw new ReservationError(403, 'PIN_EXPIRED', 'PIN no longer available');
-    }
-    throw new ReservationError(403, 'PIN_TOO_EARLY', 'PIN not available yet');
   }
 
   return { pin: reservation.pin };
