@@ -75,7 +75,7 @@ export async function createReservation(userId: string, slotId: string) {
 export async function listReservationsForUser(userId: string) {
   const reservations = await prisma.reservation.findMany({
     where: { userId },
-    include: { slot: true },
+    include: { slot: { include: { center: true } } },
   });
 
   // Sort: ACTIVE first by slot date ASC, then COMPLETED/CANCELLED by date DESC

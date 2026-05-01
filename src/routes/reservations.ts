@@ -40,6 +40,12 @@ export async function reservationRoutes(app: FastifyInstance) {
           startTime: r.slot.startTime,
           endTime: r.slot.endTime,
           priceCredits: r.slot.priceCredits,
+          centerId: r.slot.centerId,
+          center: {
+            id: r.slot.center.id,
+            name: r.slot.center.name,
+            address: r.slot.center.address,
+          },
         },
       })),
     });
